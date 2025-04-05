@@ -506,7 +506,7 @@ async function handleDirectProxy(request, pathname, apiKey) {
     const googlePath = pathname.replace(/^\/direct\//, '');
     
     // 构建目标URL
-    const targetUrl = `${BASE_URL}/${API_VERSION}/${googlePath}`;
+    const targetUrl = `${BASE_URL}/${googlePath}`;
     
     // 复制请求内容
     const requestBody = request.method !== "GET" ? await request.text() : undefined;
