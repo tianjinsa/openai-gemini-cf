@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 
 // 默认的Google API密钥
-const DEFAULT_API_KEY = "AIzaSyAahN4VChovJV49XEhf9FXvrIuhV0BEJwQ";
+const DEFAULT_API_KEY = "";
 
 export default {
   async fetch (request) {
@@ -18,12 +18,15 @@ export default {
       
       // 获取API密钥，优先级：
       // 1. 查询参数中的key参数 (Google格式)
-      // 2. Authorization头部 (OpenAI格式)
-      // 3. 默认API密钥
-      let apiKey = searchParams.get("key") || null;
+      // 2. 查询参数中的api-key参数 (Google格式替代形式)
+      // 3. Authorization头部 (OpenAI格式)
+      // 4. X-Goog-Api-Key头部 (Google格式)
+      // 5. 默认API密钥
+      let apiKey = searchParams.get("key") || searchParams.get("api-key") || null;
       if (!apiKey) {
         const auth = request.headers.get("Authorization");
-        apiKey = auth?.split(" ")[1] || DEFAULT_API_KEY;
+        const googleApiKey = request.headers.get("X-Goog-Api-Key");
+        apiKey = googleApiKey || (auth?.split(" ")[1]) || DEFAULT_API_KEY;
       }
       
       const assert = (success) => {
