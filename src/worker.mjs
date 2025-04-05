@@ -10,6 +10,8 @@ export default {
       return new Response(err.message, fixCors({ status: err.status ?? 500 }));
     };
     try {
+      const url = new URL(request.url);
+      const { pathname, searchParams } = url;
       const auth = request.headers.get("Authorization");
       const apiKey = auth?.split(" ")[1];
       const assert = (success) => {
@@ -17,7 +19,23 @@ export default {
           throw new HttpError("The specified HTTP method is not allowed for the requested resource", 400);
         }
       };
-      const { pathname } = new URL(request.url);
+      
+      // 检查是否为直接代理模式
+      const isRawProxy = searchParams.get("raw") === "true";
+      
+      // 直接代理模式处理
+      if (isRawProxy) {
+        return handleRawProxy(request, pathname, apiKey)
+          .catch(errHandler);
+      }
+
+      // 处理直接代理模式 (使用 /direct/ 前缀)
+      if (pathname.startsWith("/direct/")) {
+        return handleDirectProxy(request, pathname, apiKey)
+          .catch(errHandler);
+      }
+
+      // 格式转换模式处理
       switch (true) {
         case pathname.endsWith("/chat/completions"):
           assert(request.method === "POST");
@@ -448,5 +466,64 @@ async function toOpenAiStreamFlush (controller) {
       controller.enqueue(transform(data, "stop"));
     }
     controller.enqueue("data: [DONE]" + delimiter);
+  }
+}
+
+// 处理直接代理请求
+async function handleRawProxy(request, pathname, apiKey) {
+  try {
+    // 提取API路径
+    const googlePath = pathname.replace(/^\/v\d+(\.\d+)?/, ''); // 移除版本前缀如 /v1
+    
+    // 构建目标URL
+    const targetUrl = `${BASE_URL}/${API_VERSION}${googlePath}`;
+    
+    // 创建一个新的请求对象
+    const clonedRequest = request.clone();
+    const requestBody = await clonedRequest.text();
+    
+    // 发送请求到Google API
+    const response = await fetch(targetUrl, {
+      method: request.method,
+      headers: makeHeaders(apiKey, { 
+        "Content-Type": request.headers.get("Content-Type") || "application/json" 
+      }),
+      body: request.method !== "GET" ? requestBody : undefined,
+    });
+    
+    // 直接返回Google API的响应
+    return new Response(response.body, fixCors(response));
+  } catch (err) {
+    console.error("Raw proxy error:", err);
+    throw new HttpError(err.message, 500);
+  }
+}
+
+// 处理直接代理请求
+async function handleDirectProxy(request, pathname, apiKey) {
+  try {
+    // 提取API路径，移除 /direct/ 前缀
+    const googlePath = pathname.replace(/^\/direct\//, '');
+    
+    // 构建目标URL
+    const targetUrl = `${BASE_URL}/${API_VERSION}/${googlePath}`;
+    
+    // 复制请求内容
+    const requestBody = request.method !== "GET" ? await request.text() : undefined;
+    
+    // 发送请求到Google API
+    const response = await fetch(targetUrl, {
+      method: request.method,
+      headers: makeHeaders(apiKey, { 
+        "Content-Type": request.headers.get("Content-Type") || "application/json" 
+      }),
+      body: requestBody,
+    });
+    
+    // 直接返回Google API的响应
+    return new Response(response.body, fixCors(response));
+  } catch (err) {
+    console.error("Direct proxy error:", err);
+    throw new HttpError(err.message, 500);
   }
 }
