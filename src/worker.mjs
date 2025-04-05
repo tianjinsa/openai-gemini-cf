@@ -503,22 +503,47 @@ async function handleRawProxy(request, pathname, apiKey) {
 async function handleDirectProxy(request, pathname, apiKey) {
   try {
     // 提取API路径，移除 /direct/ 前缀
-    const googlePath = pathname.replace(/^\/direct\//, '');
+    let googlePath = pathname.replace(/^\/direct\//, '');
     
-    // 构建目标URL
-    const targetUrl = `${BASE_URL}/${googlePath}`;
+    // 检查路径是否已经包含API版本号，如果包含，则不添加
+    let targetUrl;
+    if (googlePath.startsWith("v1beta/")) {
+      // 路径已包含版本号，直接移除前缀
+      googlePath = googlePath.replace(/^v1beta\//, '');
+      targetUrl = `${BASE_URL}/v1beta/${googlePath}`;
+    } else {
+      // 路径不包含版本号，添加版本号
+      targetUrl = `${BASE_URL}/${API_VERSION}/${googlePath}`;
+    }
+    
+    console.log(`Direct proxy request to: ${targetUrl}`);
     
     // 复制请求内容
     const requestBody = request.method !== "GET" ? await request.text() : undefined;
     
+    // 确保API密钥正确传递
+    const headers = makeHeaders(apiKey, { 
+      "Content-Type": request.headers.get("Content-Type") || "application/json" 
+    });
+    
+    console.log("Request headers:", JSON.stringify(headers, null, 2));
+    
     // 发送请求到Google API
     const response = await fetch(targetUrl, {
       method: request.method,
-      headers: makeHeaders(apiKey, { 
-        "Content-Type": request.headers.get("Content-Type") || "application/json" 
-      }),
+      headers,
       body: requestBody,
     });
+    
+    // 如果响应不成功，记录错误信息
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Google API error (${response.status}): ${errorText}`);
+      return new Response(errorText, fixCors({ 
+        status: response.status, 
+        statusText: response.statusText 
+      }));
+    }
     
     // 直接返回Google API的响应
     return new Response(response.body, fixCors(response));
