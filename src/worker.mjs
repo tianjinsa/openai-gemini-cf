@@ -1,5 +1,8 @@
 import { Buffer } from "node:buffer";
 
+// 默认的Google API密钥
+const DEFAULT_API_KEY = "AIzaSyAahN4VChovJV49XEhf9FXvrIuhV0BEJwQ";
+
 export default {
   async fetch (request) {
     if (request.method === "OPTIONS") {
@@ -12,8 +15,17 @@ export default {
     try {
       const url = new URL(request.url);
       const { pathname, searchParams } = url;
-      const auth = request.headers.get("Authorization");
-      const apiKey = auth?.split(" ")[1];
+      
+      // 获取API密钥，优先级：
+      // 1. 查询参数中的key参数 (Google格式)
+      // 2. Authorization头部 (OpenAI格式)
+      // 3. 默认API密钥
+      let apiKey = searchParams.get("key") || null;
+      if (!apiKey) {
+        const auth = request.headers.get("Authorization");
+        apiKey = auth?.split(" ")[1] || DEFAULT_API_KEY;
+      }
+      
       const assert = (success) => {
         if (!success) {
           throw new HttpError("The specified HTTP method is not allowed for the requested resource", 400);
