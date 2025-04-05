@@ -488,7 +488,17 @@ async function handleRawProxy(request, pathname, apiKey) {
     const googlePath = pathname.replace(/^\/v\d+(\.\d+)?/, ''); // 移除版本前缀如 /v1
     
     // 构建目标URL
-    const targetUrl = `${BASE_URL}/${API_VERSION}${googlePath}`;
+    let targetUrl = `${BASE_URL}/${API_VERSION}${googlePath}`;
+    
+    // 解析请求URL中的查询参数
+    const url = new URL(request.url);
+    const isStream = url.searchParams.get("stream") === "true" || 
+                    googlePath.includes("streamGenerateContent");
+    
+    // 如果是流式请求，确保添加适当的查询参数
+    if (isStream && !targetUrl.includes("alt=sse")) {
+      targetUrl += (targetUrl.includes("?") ? "&" : "?") + "alt=sse";
+    }
     
     // 创建一个新的请求对象
     const clonedRequest = request.clone();
@@ -503,7 +513,37 @@ async function handleRawProxy(request, pathname, apiKey) {
       body: request.method !== "GET" ? requestBody : undefined,
     });
     
-    // 直接返回Google API的响应
+    // 如果响应不成功，记录错误信息
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Raw proxy error (${response.status}): ${errorText}`);
+      return new Response(errorText, fixCors({ 
+        status: response.status, 
+        statusText: response.statusText 
+      }));
+    }
+    
+    // 处理流式响应
+    if (isStream) {
+      // 设置正确的内容类型和其他头信息
+      const headers = new Headers({
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      });
+      
+      // 添加CORS头
+      headers.set("Access-Control-Allow-Origin", "*");
+      
+      // 直接返回流，不做任何转换
+      return new Response(response.body, {
+        headers,
+        status: response.status,
+        statusText: response.statusText,
+      });
+    }
+    
+    // 对于非流式响应，直接返回Google API的响应
     return new Response(response.body, fixCors(response));
   } catch (err) {
     console.error("Raw proxy error:", err);
@@ -529,6 +569,16 @@ async function handleDirectProxy(request, pathname, apiKey) {
     }
     
     console.log(`Direct proxy request to: ${targetUrl}`);
+    
+    // 解析请求URL中的查询参数
+    const url = new URL(request.url);
+    const isStream = url.searchParams.get("stream") === "true" || 
+                    googlePath.includes("streamGenerateContent");
+    
+    // 如果是流式请求，确保添加适当的查询参数
+    if (isStream && !targetUrl.includes("alt=sse")) {
+      targetUrl += (targetUrl.includes("?") ? "&" : "?") + "alt=sse";
+    }
     
     // 复制请求内容
     const requestBody = request.method !== "GET" ? await request.text() : undefined;
@@ -557,7 +607,27 @@ async function handleDirectProxy(request, pathname, apiKey) {
       }));
     }
     
-    // 直接返回Google API的响应
+    // 处理流式响应
+    if (isStream) {
+      // 设置正确的内容类型和其他头信息
+      const headers = new Headers({
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      });
+      
+      // 添加CORS头
+      headers.set("Access-Control-Allow-Origin", "*");
+      
+      // 直接返回流，不做任何转换
+      return new Response(response.body, {
+        headers,
+        status: response.status,
+        statusText: response.statusText,
+      });
+    }
+    
+    // 对于非流式响应，直接返回Google API的响应
     return new Response(response.body, fixCors(response));
   } catch (err) {
     console.error("Direct proxy error:", err);
