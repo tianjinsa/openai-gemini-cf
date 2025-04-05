@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 
 // 默认的Google API密钥
-const DEFAULT_API_KEY = "";
+const DEFAULT_API_KEY = "AIzaSyAahN4VChovJV49XEhf9FXvrIuhV0BEJwQ";
 
 export default {
   async fetch (request) {
